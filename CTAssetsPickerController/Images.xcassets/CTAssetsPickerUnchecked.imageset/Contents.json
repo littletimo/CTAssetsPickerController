@@ -3,12 +3,12 @@
     {
       "idiom" : "universal",
       "scale" : "1x",
-      "filename" : "on_tick.png"
+      "filename" : "off_tick.png"
     },
     {
       "idiom" : "universal",
       "scale" : "2x",
-      "filename" : "on_tick@2x.png"
+      "filename" : "off_tick@2x.png"
     }
   ],
   "info" : {

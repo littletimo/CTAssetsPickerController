@@ -65,6 +65,7 @@
 @interface CTAssetsViewController ()
 
 @property (nonatomic, strong) NSMutableArray *assets;
+@property (nonatomic, strong) NSMutableSet *selectedItems;
 @property (nonatomic, assign) NSInteger numberOfPhotos;
 @property (nonatomic, assign) NSInteger numberOfVideos;
 
@@ -84,7 +85,7 @@
 @end
 
 
-@interface CTAssetsViewCell : UICollectionViewCell
+@interface CTAssetsViewCell : UICollectionViewCell <UIGestureRecognizerDelegate>
 
 - (void)bind:(ALAsset *)asset;
 
@@ -97,6 +98,8 @@
 @property (nonatomic, copy) NSString *type;
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, strong) UIImage *videoImage;
+@property (nonatomic, strong) UITapGestureRecognizer *gestureRecognizer;
+@property (nonatomic, weak) UICollectionViewController* parent;
 
 @end
 
@@ -501,6 +504,7 @@
     [super viewDidLoad];
     [self setupViews];
     [self setupButtons];
+    self.selectedItems = [[NSMutableSet alloc] init];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -580,8 +584,11 @@
     static NSString *CellIdentifier = kAssetsViewCellIdentifier;
     
     CTAssetsViewCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:CellIdentifier forIndexPath:indexPath];
-
+    cell.parent = self;
     [cell bind:[self.assets objectAtIndex:indexPath.row]];
+    if ([self.selectedItems containsObject:indexPath]) {
+        cell.selected = YES;
+    }
     
     return cell;
 }
@@ -611,11 +618,13 @@
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
 {
     [self setTitleWithSelectedIndexPaths:collectionView.indexPathsForSelectedItems];
+    [self.selectedItems addObject:indexPath];
 }
 
 - (void)collectionView:(UICollectionView *)collectionView didDeselectItemAtIndexPath:(NSIndexPath *)indexPath
 {
     [self setTitleWithSelectedIndexPaths:collectionView.indexPathsForSelectedItems];
+    [self.selectedItems removeObject:indexPath];
 }
 
 
@@ -668,7 +677,7 @@
 {
     NSMutableArray *assets = [[NSMutableArray alloc] init];
     
-    for (NSIndexPath *indexPath in self.collectionView.indexPathsForSelectedItems)
+    for (NSIndexPath *indexPath in self.selectedItems)
     {
         [assets addObject:[self.assets objectAtIndex:indexPath.item]];
     }
@@ -695,6 +704,7 @@ static CGFloat titleHeight;
 static UIImage *videoIcon;
 static UIColor *titleColor;
 static UIImage *checkedIcon;
+static UIImage *uncheckedIcon;
 static UIColor *selectedColor;
 
 + (void)initialize
@@ -704,6 +714,7 @@ static UIColor *selectedColor;
     videoIcon       = [UIImage imageNamed:@"CTAssetsPickerVideo"];
     titleColor      = [UIColor whiteColor];
     checkedIcon     = [UIImage imageNamed:(!IS_IOS7) ? @"CTAssetsPickerChecked~iOS6" : @"CTAssetsPickerChecked"];
+    uncheckedIcon   = [UIImage imageNamed:@"CTAssetsPickerUnchecked"];
     selectedColor   = [UIColor colorWithWhite:1 alpha:0.3];
 }
 
@@ -725,6 +736,34 @@ static UIColor *selectedColor;
     self.image  = [UIImage imageWithCGImage:asset.thumbnail];
     self.type   = [asset valueForProperty:ALAssetPropertyType];
     self.title  = [NSDate timeDescriptionOfTimeInterval:[[asset valueForProperty:ALAssetPropertyDuration] doubleValue]];
+    self.gestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
+    self.gestureRecognizer.delegate = self;
+    [self addGestureRecognizer:self.gestureRecognizer];
+}
+
+- (void)handleTap:(UITapGestureRecognizer*)recognizer
+{
+    self.selected = !self.selected;
+    UIViewController* imageController = [[UIViewController alloc] init];
+    [imageController.view setBackgroundColor:[UIColor blackColor]];
+    ALAssetRepresentation *assetRepresentation = [self.asset defaultRepresentation];
+    UIImageView* imageView = [[UIImageView alloc] initWithFrame:imageController.view.frame];
+    imageView.image = [UIImage imageWithCGImage:[assetRepresentation fullScreenImage]
+                                          scale:[assetRepresentation scale]
+                                    orientation:UIImageOrientationUp];
+    imageView.contentMode = UIViewContentModeScaleAspectFit;
+    imageView.translatesAutoresizingMaskIntoConstraints = NO;
+    [imageController.view addSubview:imageView];
+    [imageController.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[imageView]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(imageView)]];
+    [imageController.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[imageView]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(imageView)]];
+    [self.parent.navigationController pushViewController:imageController animated:YES];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
+{
+    CGPoint location = [touch locationInView:self.parent.collectionView];
+    CGRect checkBox = CGRectMake(self.frame.origin.x + kThumbnailLength/2.f, self.frame.origin.y, kThumbnailLength/2.0f, kThumbnailLength/2.0f);
+    return !CGRectContainsPoint(checkBox, location);
 }
 
 - (void)setSelected:(BOOL)selected
@@ -777,15 +816,14 @@ static UIColor *selectedColor;
         [videoIcon drawAtPoint:CGPointMake(2, startPoint.y + (titleHeight - videoIcon.size.height) / 2)];
     }
     
+    UIImage* check;
     if (self.selected)
-    {
-        CGContextRef context    = UIGraphicsGetCurrentContext();
-		CGContextSetFillColorWithColor(context, selectedColor.CGColor);
-		CGContextFillRect(context, rect);
-        
-        [checkedIcon drawAtPoint:CGPointMake(CGRectGetMaxX(rect) - checkedIcon.size.width, CGRectGetMinY(rect))];
-    }
+        check = checkedIcon;
+    else
+        check = uncheckedIcon;
+    [check drawAtPoint:CGPointMake(CGRectGetMaxX(rect) - checkedIcon.size.width, CGRectGetMinY(rect))];
 }
+
 
 
 - (NSString *)accessibilityLabel
